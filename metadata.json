@@ -1,0 +1,6 @@
+{
+  "name": "CutSync — AI Music Generation Studio",
+  "description": "Transform natural-language descriptions of emotions, scenes, moods, and musical styles into studio-grade music with real instrument stems.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

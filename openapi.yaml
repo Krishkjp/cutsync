@@ -1,0 +1,248 @@
+openapi: 3.1.0
+info:
+  title: CutSync — AI Music Generation Studio API
+  version: 2.4.0
+  description: >
+    Production-grade API for generating original, commercially safe cinematic instrumental music
+    with genuine separate instrument stems, exact duration compliance, EBU R128 loudness mastering (-16 LUFS),
+    and voiceover ducking.
+servers:
+  - url: /
+    description: Current CutSync Engine Server
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns service health, version, and supported capabilities.
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "healthy" }
+                  version: { type: string, example: "2.4.0" }
+
+  /ready:
+    get:
+      summary: Readiness probe
+      description: Checks readiness of FFmpeg and synthesis engine.
+      responses:
+        '200':
+          description: Engine is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ready" }
+                  ffmpeg: { type: boolean, example: true }
+
+  /api/v1/music/jobs:
+    post:
+      summary: Submit a new cinematic music generation job
+      description: Initiates background generation of instrumental track, 5 genuine stems, and manifest.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+          required: false
+          description: Safe retry key ensuring duplicate requests return the same job without recalculating.
+        - in: header
+          name: X-Correlation-Id
+          schema:
+            type: string
+          required: false
+          description: Traceability correlation ID passed down to structured logs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - prompt
+                - duration_s
+              properties:
+                prompt:
+                  type: string
+                  description: Emotional scene description or musical prompt.
+                  example: "warm, optimistic acoustic pop for a product launch, builds to an uplifting finish"
+                duration_s:
+                  type: number
+                  minimum: 5.0
+                  maximum: 300.0
+                  description: Requested duration in seconds (accurate to within 0.05s).
+                  example: 45.0
+                sections:
+                  type: array
+                  description: Optional mood changes at video cut points.
+                  items:
+                    type: object
+                    required:
+                      - start_s
+                      - mood
+                    properties:
+                      start_s: { type: number, example: 0.0 }
+                      mood: { type: string, example: "calm intro" }
+                tempo_bpm:
+                  type: integer
+                  nullable: true
+                  example: 76
+                key:
+                  type: string
+                  nullable: true
+                  example: "Eb Major"
+                loopable:
+                  type: boolean
+                  default: false
+                  example: false
+                narration_url:
+                  type: string
+                  nullable: true
+                  description: URL or marker for voiceover track to generate ducked mix.
+                  example: "https://example.com/voiceover.wav"
+                seed:
+                  type: integer
+                  example: 42
+                primary_emotion:
+                  type: string
+                  example: "romantic_love"
+                sub_emotion:
+                  type: string
+                  example: "intimate_love"
+                reference_film:
+                  type: string
+                  example: "Ennio Morricone romantic cinema"
+                callback_url:
+                  type: string
+                  nullable: true
+                  description: Webhook URL called upon completion with HMAC-SHA256 signature.
+                output:
+                  type: object
+                  properties:
+                    sample_rate: { type: integer, default: 48000, example: 48000 }
+                    target_lufs: { type: number, default: -16, example: -16 }
+                    formats:
+                      type: array
+                      items: { type: string }
+                      example: ["wav", "mp3"]
+      responses:
+        '202':
+          description: Job accepted and queued for background processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string, example: "job_1729420000_a1b2c3" }
+                  status: { type: string, enum: ["queued", "running", "succeeded"], example: "queued" }
+                  progress: { type: integer, example: 0 }
+                  check_status_url: { type: string, example: "/api/v1/jobs/job_1729420000_a1b2c3" }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/jobs/{job_id}:
+    get:
+      summary: Retrieve job status and generated audio downloads
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status and deliverables
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResult'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/music/jobs/{job_id}/regenerate-stem:
+    post:
+      summary: Regenerate a single stem without altering other instrument tracks
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - stem
+              properties:
+                stem:
+                  type: string
+                  enum: [drums, melody, harmony, bass, atmosphere]
+                  example: "drums"
+                seed:
+                  type: integer
+                  example: 994
+      responses:
+        '200':
+          description: Stem successfully regenerated and mix recalculated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResult'
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - retryable
+          properties:
+            code: { type: string, example: "DURATION_OUT_OF_RANGE" }
+            message: { type: string, example: "The duration_s field must be between 5 and 300." }
+            retryable: { type: boolean, example: false }
+            details: { type: string }
+
+    JobResult:
+      type: object
+      properties:
+        job_id: { type: string }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        stage: { type: string }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        mix_url: { type: string, example: "/outputs/job_xxx/mix.wav" }
+        mix_mp3_url: { type: string, example: "/outputs/job_xxx/mix.mp3" }
+        mix_ducked_url: { type: string, example: "/outputs/job_xxx/mix_ducked.wav" }
+        stems_urls:
+          type: object
+          properties:
+            drums: { type: string }
+            bass: { type: string }
+            harmony: { type: string }
+            melody: { type: string }
+            atmosphere: { type: string }
+        manifest_url: { type: string, example: "/outputs/job_xxx/music_manifest.json" }

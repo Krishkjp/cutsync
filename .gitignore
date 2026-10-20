@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Production builds & caches
+dist/
+build/
+coverage/
+.turbo/
+
+# Environment files and credentials (NEVER commit secrets)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.dev.env.json
+!.env.example
+
+# Large generated audio artifacts and batch runs
+outputs/job_*
+outputs/*.zip
+batch_test_results/
+
+# System & Editor files
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
